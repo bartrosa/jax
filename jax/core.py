@@ -393,16 +393,24 @@ class Trace:
         self.__class__.__name__, self.level, self.sublevel)
 
   def process_call(self, call_primitive, f, tracers, params):
-    raise NotImplementedError("must override to handle call-like primitives")
+    msg = (f"{type(self)} must override process_call to handle call-like "
+           "primitives")
+    raise NotImplementedError(msg)
 
   def process_map(self, call_primitive, f, tracers, params):
-    raise NotImplementedError("must override to handle map-like primitives")
+    msg = (f"{type(self)} must override process_map to handle map-like "
+           "primitives")
+    raise NotImplementedError(msg)
 
   def process_custom_jvp_call(self, primitive, fun, jvp, tracers):
-    raise NotImplementedError("must override to handle custom_jvp")
+    msg = (f"{type(self)} must override process_custom_jvp_call "
+           "to handle custom_jvp primitives")
+    raise NotImplementedError(msg)
 
   def process_custom_vjp_call(self, primitive, fun, fwd, bwd, tracers, out_trees):
-    raise NotImplementedError("must override to handle custom_vjp")
+    msg = (f"{type(self)} must override process_custom_vjp_call "
+           "to handle custom_vjp primitives")
+    raise NotImplementedError(msg)
 
 def escaped_tracer_error(detail=None):
   msg = ("Encountered an unexpected tracer. Perhaps this tracer escaped "
@@ -567,6 +575,14 @@ class EvalTrace(Trace):
   def process_call(self, primitive, f, tracers, params):
     return primitive.impl(f, *tracers, **params)
   process_map = process_call
+
+  def process_custom_jvp_call(self, primitive, fun, jvp, tracers):
+    del primitive, jvp  # Unused.
+    return fun.call_wrapped(*tracers)
+
+  def process_custom_vjp_call(self, primitive, fun, fwd, bwd, tracers, out_trees):
+    del primitive, fwd, bwd, out_trees  # Unused.
+    return fun.call_wrapped(*tracers)
 
 
 class MainTrace:

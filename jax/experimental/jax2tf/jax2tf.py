@@ -408,7 +408,7 @@ class TensorFlowTrace(core.Trace):
     # behavior is desirable because jax2tf stages code out of the JAX system, so
     # there are no more JAX differentiation transformations to be applied.
     del jvp  # Unused.
-    return self.process_call(prim, fun, tracers, {})
+    return self.process_call(core.call_p, fun, tracers, {})
 
   def post_process_custom_jvp_call(self, out_tracers, params):
     assert False  # unreachable assuming jax2tf runs with clean trace state
@@ -418,7 +418,7 @@ class TensorFlowTrace(core.Trace):
     # behavior is desirable because jax2tf stages code out of the JAX system, so
     # there are no more JAX differentiation transformations to be applied.
     del fwd, bwd, out_trees  # Unused.
-    return self.process_call(prim, fun, tracers, {})
+    return self.process_call(core.call_p, fun, tracers, {})
 
   def post_process_custom_vjp_call(self, out_tracers, params):
     assert False  # unreachable assuming jax2tf runs with clean trace state
