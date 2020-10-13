@@ -286,16 +286,83 @@ class JaxprTrace(Trace):
     return jaxpr, out_pvs, consts, env_tracers
 
   def process_custom_jvp_call(self, prim, fun, jvp, tracers):
-    # This implementation doesn't preserve custom_jvp rules; they're dropped.
-    # TODO(mattjj): allow partial eval to preserve custom_jvp rules
-    del prim, jvp  # Unused.
-    return fun.call_wrapped(*tracers)
+    tracers = map(self.instantiate_const_abstracted, tracers)
+    in_avals, in_consts = unzip2(t.pval for t in tracers)  # in_consts are units
+    fun = trace_to_subjaxpr(fun, self.main, True)
+    fun, aux = partial_eval_wrapper(fun, tuple(in_avals))
+    out_flat = prim.bind(fun, jvp, *in_consts)
+    out_avals, jaxpr, env = aux()
+    out_consts, consts = split_list(out_flat, [len(out_flat)-len(jaxpr.constvars)])
+    out_pvals = map(PartialVal, zip(out_avals, out_consts))  # out_consts are units
+    env_tracers = map(self.full_raise, env)
+    out_tracers = [JaxprTracer(self, pval, None) for pval in out_pvals]
+    const_tracers = map(self.new_instantiated_const, consts)
+    in_tracers = (*const_tracers, *env_tracers, *tracers)
+    closed_jaxpr = core.ClosedJaxpr(convert_constvars_jaxpr(jaxpr), ())
+
+    @_memoize
+    def jvp_jaxpr_thunk():
+      jvp_ = trace_to_subjaxpr(jvp, self.main, True)
+      jvp_, aux = partial_eval_wrapper(jvp_, tuple(in_avals) * 2)
+      out_flat = jvp_.call_wrapped(*(in_consts * 2))  # in_consts are units
+      out_avals, jaxpr, env = aux()
+      _, consts = split_list(out_flat, [len(out_flat)-len(jaxpr.constvars)])
+      converted_jaxpr = convert_envvars_to_constvars(jaxpr, len(env))
+      return converted_jaxpr, (*consts, *env)
+
+    eqn = new_eqn_recipe(in_tracers, out_tracers, prim.initial_style,
+                         dict(fun_jaxpr=closed_jaxpr,
+                              jvp_jaxpr_thunk=jvp_jaxpr_thunk,
+                              num_consts=len(consts) + len(env)),
+                         source_info_util.current())
+    for t in out_tracers: t.recipe = eqn
+    return out_tracers
+
+  def post_process_custom_jvp_call(self, out_tracers, params):
+    # This path should only be reachable if we expose a partial eval API
+    # unrelated to autodiff, since we raise an error when differentiation with
+    # respect to values over which a custom_jvp function closes is detected.
+    raise NotImplementedError  # TODO(mattjj)
 
   def process_custom_vjp_call(self, prim, fun, fwd, bwd, tracers, out_trees):
-    # This implementation doesn't preserve custom_vjp rules; they're dropped.
-    # TODO(mattjj): allow partial eval to preserve custom_vjp rules
-    del prim, fwd, bwd, out_trees  # Unused.
-    return fun.call_wrapped(*tracers)
+    tracers = map(self.instantiate_const_abstracted, tracers)
+    in_avals, in_consts = unzip2(t.pval for t in tracers)  # in_consts are units
+    fun = trace_to_subjaxpr(fun, self.main, True)
+    fun, aux = partial_eval_wrapper(fun, tuple(in_avals))
+    out_flat = prim.bind(fun, fwd, bwd, *in_consts, out_trees=out_trees)
+    out_avals, jaxpr, env = aux()
+    out_consts, consts = split_list(out_flat, [len(out_flat)-len(jaxpr.constvars)])
+    out_pvals = map(PartialVal, zip(out_avals, out_consts))  # out_consts are units
+    env_tracers = map(self.full_raise, env)
+    out_tracers = [JaxprTracer(self, pval, None) for pval in out_pvals]
+    const_tracers = map(self.new_instantiated_const, consts)
+    in_tracers = (*const_tracers, *env_tracers, *tracers)
+    closed_jaxpr = core.ClosedJaxpr(convert_constvars_jaxpr(jaxpr), ())
+
+    @_memoize
+    def fwd_jaxpr_thunk():
+      fwd_ = trace_to_subjaxpr(fwd, self.main, True)
+      fwd_, aux = partial_eval_wrapper(fwd_, tuple(in_avals))
+      out_flat = fwd_.call_wrapped(*in_consts)  # in_consts are units
+      out_avals, jaxpr, env = aux()
+      _, consts = split_list(out_flat, [len(out_flat)-len(jaxpr.constvars)])
+      converted_jaxpr = convert_envvars_to_constvars(jaxpr, len(env))
+      return converted_jaxpr, (*consts, *env)
+
+    eqn = new_eqn_recipe(in_tracers, out_tracers, prim.initial_style,
+                         dict(fun_jaxpr=closed_jaxpr,
+                              fwd_jaxpr_thunk=fwd_jaxpr_thunk,
+                              num_consts=len(consts) + len(env),
+                              bwd=bwd, out_trees=out_trees),
+                         source_info_util.current())
+    for t in out_tracers: t.recipe = eqn
+    return out_tracers
+
+  def post_process_custom_vjp_call(self, out_tracers, params):
+    # This path should only be reachable if we expose a partial eval API
+    # unrelated to autodiff, since we raise an error when differentiation with
+    # respect to values over which a custom_vjp function closes is detected.
+    raise NotImplementedError  # TODO(mattjj)
 
 
 @lu.transformation_with_aux
@@ -563,6 +630,15 @@ def convert_constvars_jaxpr(jaxpr: Jaxpr):
                        outvars=jaxpr.outvars, eqns=jaxpr.eqns)
   core.skip_checks or core.check_jaxpr(lifted_jaxpr)
   return lifted_jaxpr
+
+def convert_envvars_to_constvars(jaxpr: Jaxpr, num_env_vars: int):
+  core.skip_checks or core.check_jaxpr(jaxpr)
+  env_vars, invars = split_list(jaxpr.invars, [num_env_vars])
+  converted_jaxpr = Jaxpr(constvars=jaxpr.constvars + env_vars,
+                          invars=invars, outvars=jaxpr.outvars, eqns=jaxpr.eqns)
+  core.skip_checks or core.check_jaxpr(converted_jaxpr)
+  return converted_jaxpr
+
 
 def _split_aval(unknown: bool, aval: AbstractValue) -> Tuple[AbstractValue, AbstractValue]:
   return (abstract_unit, aval) if unknown else (aval, abstract_unit)

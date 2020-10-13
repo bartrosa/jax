@@ -3304,6 +3304,14 @@ class CustomJVPTest(jtu.JaxTestCase):
     expected = api.grad(api.grad(g))(2.)
     self.assertAllClose(ans, expected, check_dtypes=False)
 
+    ans = api.grad(api.remat(api.grad(g)))(2.)
+    expected = api.grad(api.grad(g))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(api.grad(api.grad(api.remat(g))))(2.)
+    expected = api.grad(api.grad(api.grad(g)))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
 
 class CustomVJPTest(jtu.JaxTestCase):
 
@@ -3890,6 +3898,52 @@ class CustomVJPTest(jtu.JaxTestCase):
     self.assertEqual(api.grad(foo, allow_int=True, argnums=(0, 1))(x, y),
                      (2., np.zeros(shape=(), dtype=float0)))
 
+  def test_remat(self):
+    @api.custom_vjp
+    def f(x):
+      return jnp.sin(x)
+    def f_fwd(x):
+      return f(x), jnp.cos(x)
+    def f_rev(cos_x, g):
+      return (2 * cos_x * g,)
+    f.defvjp(f_fwd, f_rev)
+
+    @api.remat
+    def g(x):
+      return f(f(x))
+
+    ans = g(2.)
+    expected = np.sin(np.sin(2.))
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(g)(2.)
+    expected = 4. * api.grad(lambda x: jnp.sin(jnp.sin(x)))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+  def test_remat_higher_order(self):
+    @api.custom_vjp
+    def f(x):
+      return jnp.sin(x)
+    def f_fwd(x):
+      return f(x), jnp.cos(x)
+    def f_rev(cos_x, g):
+      return (2 * cos_x * g,)
+    f.defvjp(f_fwd, f_rev)
+
+    def g(x):
+      return f(f(x))
+
+    ans = api.grad(api.grad(api.remat(g)))(2.)
+    expected = api.grad(api.grad(g))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(api.remat(api.grad(g)))(2.)
+    expected = api.grad(api.grad(g))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(api.grad(api.grad(api.remat(g))))(2.)
+    expected = api.grad(api.grad(api.grad(g)))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
 
 
 class InvertibleADTest(jtu.JaxTestCase):
