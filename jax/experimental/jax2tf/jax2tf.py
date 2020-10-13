@@ -1454,7 +1454,8 @@ tf_impl[lax_linalg.eigh_p] = _eigh
 
 def _custom_jvp_call_jaxpr(*args: TfValOrUnit,
                            fun_jaxpr: core.ClosedJaxpr,
-                           jvp_jaxpr_thunk: Callable) -> Sequence[TfValOrUnit]:
+                           jvp_jaxpr_thunk: Callable,
+                           num_consts: int) -> Sequence[TfValOrUnit]:
   # TODO(necula): ensure that there is no AD transformation in scope
   res = _interpret_jaxpr(fun_jaxpr, *args)
   return _tfval_add_unit(res, fun_jaxpr.out_avals)
