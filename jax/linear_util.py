@@ -116,13 +116,14 @@ class WrappedFun(object):
     params: extra parameters to pass as keyword arguments to `f`, along with the
       transformed keyword arguments.
   """
-  __slots__ = ("f", "transforms", "stores", "params")
+  __slots__ = ("f", "transforms", "stores", "params", "called")  # TODO DO NOT SUBMIT
 
   def __init__(self, f, transforms, stores, params):
     self.f = f
     self.transforms = transforms
     self.stores = stores
     self.params = params
+    self.called = False
 
   @property
   def __name__(self):
@@ -171,6 +172,7 @@ class WrappedFun(object):
         ans, side = ans
         out_store.store(side)
 
+    self.called = True
     return ans
 
   def __repr__(self):

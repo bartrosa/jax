@@ -2766,7 +2766,27 @@ class CustomJVPTest(jtu.JaxTestCase):
     expected = 2.
     self.assertAllClose(ans, expected, check_dtypes=False)
 
+    ans = api.grad(api.jit(foo))(3.)
+    expected = 2.
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.jit(api.grad(foo))(3.)
+    expected = 2.
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
     ans = api.grad(api.grad(foo))(3.)
+    expected = 0.
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(api.grad(api.jit(foo)))(3.)
+    expected = 0.
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(api.jit(api.grad(foo)))(3.)
+    expected = 0.
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.jit(api.grad(api.grad(foo)))(3.)
     expected = 0.
     self.assertAllClose(ans, expected, check_dtypes=False)
 
@@ -2789,7 +2809,31 @@ class CustomJVPTest(jtu.JaxTestCase):
     expected = 3. * jnp.ones(3)
     self.assertAllClose(ans, expected, check_dtypes=False)
 
+    ans = api.vmap(api.jit(foo))(jnp.ones(3))
+    expected = 3. * jnp.ones(3)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.jit(api.vmap(foo))(jnp.ones(3))
+    expected = 3. * jnp.ones(3)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
     ans = api.grad(lambda x: api.vmap(foo)(x).sum())(jnp.ones(3))
+    expected = 2. * jnp.ones(3)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(lambda x: api.vmap(api.jit(foo))(x).sum())(jnp.ones(3))
+    expected = 2. * jnp.ones(3)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(lambda x: api.jit(api.vmap(foo))(x).sum())(jnp.ones(3))
+    expected = 2. * jnp.ones(3)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(api.jit(lambda x: api.vmap(foo)(x).sum()))(jnp.ones(3))
+    expected = 2. * jnp.ones(3)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.jit(api.grad(lambda x: api.vmap(foo)(x).sum()))(jnp.ones(3))
     expected = 2. * jnp.ones(3)
     self.assertAllClose(ans, expected, check_dtypes=False)
 
@@ -3220,6 +3264,45 @@ class CustomJVPTest(jtu.JaxTestCase):
     expected_tangents = (2., np.zeros((), float0))
     self.assertArraysEqual(api.jvp(foo, primals, tangents),
                            (primals, expected_tangents))
+
+  def test_remat(self):
+    @api.custom_jvp
+    def f(x):
+      return jnp.sin(x)
+    def f_jvp(primals, tangents):
+      x, = primals
+      g, = tangents
+      return f(x), 2 * jnp.cos(x) * g
+    f.defjvp(f_jvp)
+
+    @api.remat
+    def g(x):
+      return f(f(x))
+
+    ans = g(2.)
+    expected = np.sin(np.sin(2.))
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+    ans = api.grad(g)(2.)
+    expected = 4. * api.grad(lambda x: jnp.sin(jnp.sin(x)))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+  def test_remat_higher_order(self):
+    @api.custom_jvp
+    def f(x):
+      return jnp.sin(x)
+    def f_jvp(primals, tangents):
+      x, = primals
+      g, = tangents
+      return f(x), 2 * jnp.cos(x) * g
+    f.defjvp(f_jvp)
+
+    def g(x):
+      return f(f(x))
+
+    ans = api.grad(api.grad(api.remat(g)))(2.)
+    expected = api.grad(api.grad(g))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
 
 
 class CustomVJPTest(jtu.JaxTestCase):

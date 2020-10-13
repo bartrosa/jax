@@ -179,7 +179,7 @@ class JaxprTrace(Trace):
                   else PartialVal.unknown(mapped_aval(pval[0]))
                   for pval, is_mapped in zip(in_pvals, params['mapped_invars'])]
     jaxpr, out_pvals, consts, env_tracers = self.partial_eval(
-        f, in_pvals, partial(primitive.bind, **params))
+        f, in_pvals, partial(primitive.bind, **params), instantiate=False)
     if primitive.map_primitive:
       unmapped_aval = partial(core.unmapped_aval, params['axis_size'])
       out_pvals = [pval if pval.is_known()
@@ -273,16 +273,29 @@ class JaxprTrace(Trace):
   post_process_map = post_process_call
 
   def partial_eval(self, f: lu.WrappedFun, pvals: Sequence[PartialVal],
-                   app: Callable[[lu.WrappedFun, Tuple[core.Value, ...]], Tuple[core.Value]]):
+                   app: Callable[[lu.WrappedFun, Tuple[core.Value, ...]], Tuple[core.Value]],
+                   instantiate: bool):
     """Partially evaluate f on a sequence of PartialVals."""
     in_avals, in_consts = unzip2(pvals)
-    f = trace_to_subjaxpr(f, self.main, False)
+    f = trace_to_subjaxpr(f, self.main, instantiate)
     f, aux = partial_eval_wrapper(f, tuple(in_avals))
     out_flat, (out_avals, jaxpr, env) = app(f, *in_consts), aux()
     out_consts, consts = split_list(out_flat, [len(out_flat)-len(jaxpr.constvars)])
     out_pvs = map(PartialVal, zip(out_avals, out_consts))
     env_tracers = map(self.full_raise, env)
     return jaxpr, out_pvs, consts, env_tracers
+
+  def process_custom_jvp_call(self, prim, fun, jvp, tracers):
+    # This implementation doesn't preserve custom_jvp rules; they're dropped.
+    # TODO(mattjj): allow partial eval to preserve custom_jvp rules
+    del prim, jvp  # Unused.
+    return fun.call_wrapped(*tracers)
+
+  def process_custom_vjp_call(self, prim, fun, fwd, bwd, tracers, out_trees):
+    # This implementation doesn't preserve custom_vjp rules; they're dropped.
+    # TODO(mattjj): allow partial eval to preserve custom_vjp rules
+    del prim, fwd, bwd, out_trees  # Unused.
+    return fun.call_wrapped(*tracers)
 
 
 @lu.transformation_with_aux
@@ -658,11 +671,11 @@ def _remat_partial_eval(trace, _, f, tracers, params):
   in_pvals = [t.pval for t in instantiated_tracers]
   if config.omnistaging_enabled:
     jaxpr, eval_out_pvals, consts, env_tracers = trace.partial_eval(
-      f, in_pvals, partial(remat_call_p.bind, **params))
+      f, in_pvals, partial(remat_call_p.bind, **params), instantiate=False)
   else:
     with core.initial_style_staging():  # type: ignore
       jaxpr, eval_out_pvals, consts, env_tracers = trace.partial_eval(
-        f, in_pvals, partial(remat_call_p.bind, **params))
+        f, in_pvals, partial(remat_call_p.bind, **params), instantiate=False)
 
   # Convert consts to inputs, since they may contain Tracer instances.
   jaxpr = convert_constvars_jaxpr(jaxpr)
