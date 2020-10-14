@@ -3974,6 +3974,30 @@ class CustomVJPTest(jtu.JaxTestCase):
     expected = 2 * jnp.cos(3.)
     self.assertAllClose(ans, expected, check_dtypes=False)
 
+  def test_custom_vjp_closure_4521(self):
+    # https://github.com/google/jax/issues/4521
+    @api.custom_vjp
+    def g(x, y):
+      return None
+    def g_fwd(x, y):
+      return None, y
+    def g_bwd(residuals, z_bar):
+      assert False
+
+    g.defvjp(g_fwd, g_bwd)
+
+    def f(xs, y):
+      v_g = api.vmap(g, in_axes=(0, None), out_axes=None)
+      v_g(xs, y)
+
+    def scan_body(xs, _):
+      y = jnp.zeros(1)
+      _, vjp_f = api.vjp(f, xs, y)
+      vjp_f(None)
+      return xs, None
+
+    lax.scan(scan_body, jnp.ones(5), None, 100)  # doesn't crash
+
 
 class InvertibleADTest(jtu.JaxTestCase):
 
