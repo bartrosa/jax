@@ -50,7 +50,6 @@ from .tree_util import (tree_map, tree_flatten, tree_unflatten, tree_structure,
 from .util import (unzip2, curry, partial, safe_map, safe_zip, prod, split_list,
                    extend_name_stack, wrap_name, cache)
 from .lib import jax_jit
-from .lib import version
 from .lib import xla_bridge as xb
 from .lib import xla_client as xc
 # Unused imports to be exported
@@ -87,11 +86,10 @@ zip = safe_zip
 FLAGS = flags.FLAGS
 flags.DEFINE_bool("jax_disable_jit", bool_env("JAX_DISABLE_JIT", False),
                   "Disable JIT compilation and just call original Python.")
-flags.DEFINE_bool(
-    "experimental_cpp_jit", bool_env("JAX_CPP_JIT", version >= (0, 1, 56)),
-    "A temporary flag enabling the C++ jax.jit fast path."
-    "Set this to `False` only if it crashes otherwise and report "
-    "the error to the jax-team.")
+flags.DEFINE_bool("experimental_cpp_jit", bool_env("JAX_CPP_JIT", False),
+                  "A temporary flag enabling the C++ jax.jit fast path."
+                  "Set this to `False` only if it crashes otherwise and report "
+                  "the error to the jax-team.")
 
 float0 = dtypes.float0
 
@@ -1234,14 +1232,15 @@ def vmap(fun: Callable[..., T], in_axes=0, out_axes=0, axis_name=None) -> Callab
 
   return batched_fun
 
-def _get_axis_size(name: str, i:int, shape: Tuple[int, ...], axis: int):
-  try:
-    return shape[axis]
-  except (IndexError, TypeError) as e:
-    raise ValueError(f"{name} got arg {i} of rank {len(shape)} "
-                     f"but axis to be mapped {axis}") from e
-
 def _mapped_axis_size(tree, vals, dims, name):
+  def _get_axis_size(name: str, i:int, shape: Tuple[int, ...], axis: int):
+    try:
+      return shape[axis]
+    except (IndexError, TypeError) as e:
+      ranks = tree_unflatten(tree, [np.ndim(x) for x, d in zip(vals, dims)])
+      raise ValueError(f"{name} got arg {i} of rank {len(shape)} but axis to be mapped {axis}. "
+                       f"The tree of ranks is:\n{ranks}") from e
+
   mapped_axis_sizes = {_get_axis_size(name, i, np.shape(x), d)
                        for i, (x, d) in enumerate(zip(vals, dims))
                        if d is not None}
