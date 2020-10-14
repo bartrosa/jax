@@ -3656,7 +3656,7 @@ class CustomVJPTest(jtu.JaxTestCase):
       return x, None
 
     def foo_bwd(_, g):
-      return g
+      return (g, g)
 
     f.defvjp(foo_fwd, foo_bwd)
 
@@ -3669,7 +3669,7 @@ class CustomVJPTest(jtu.JaxTestCase):
             "and in particular must produce a tuple of length equal to the "
             "number of arguments to the primal function, but got VJP output "
             "structure {} for primal input structure {}.".format(
-                tree_util.tree_structure(1),
+                tree_util.tree_structure((1, 1)),
                 tree_util.tree_structure((1,)))
         ),
         lambda: api.grad(f)(2.))
@@ -3943,6 +3943,35 @@ class CustomVJPTest(jtu.JaxTestCase):
 
     ans = api.grad(api.grad(api.grad(api.remat(g))))(2.)
     expected = api.grad(api.grad(api.grad(g)))(2.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+  def test_bwd_nones(self):
+    @api.custom_vjp
+    def f(x, y):
+      return x * jnp.sin(y)
+    def f_fwd(x, y):
+      return f(x, y), jnp.cos(y)
+    def f_rev(cos, g):
+      return (None, 2 * cos * g)
+    f.defvjp(f_fwd, f_rev)
+
+    ans = api.grad(lambda x: f(x, x))(3.)
+    expected = 2 * jnp.cos(3.)
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
+  def test_bwd_nones_pytree(self):
+    @api.custom_vjp
+    def f(xs, y):
+      x1, x2 = xs
+      return x1 * x2 * jnp.sin(y)
+    def f_fwd(xs, y):
+      return f(xs, y), jnp.cos(y)
+    def f_rev(cos, g):
+      return (None, 2 * cos * g)
+    f.defvjp(f_fwd, f_rev)
+
+    ans = api.grad(lambda x: f((x, x), x))(3.)
+    expected = 2 * jnp.cos(3.)
     self.assertAllClose(ans, expected, check_dtypes=False)
 
 

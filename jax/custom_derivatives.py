@@ -20,8 +20,7 @@ from typing import Callable, Sequence, Tuple, Any
 
 from . import core
 from . import linear_util as lu
-from .tree_util import (tree_flatten, tree_unflatten, tree_map, tree_multimap,
-                        _replace_nones)
+from .tree_util import tree_flatten, tree_unflatten, tree_map, tree_multimap
 from .util import safe_zip, safe_map, split_list
 from .api_util import flatten_fun_nokwargs, argnums_partial, wrap_hashably
 from .abstract_arrays import raise_to_shaped
@@ -522,16 +521,26 @@ def _flatten_bwd(in_tree, out_trees, *args):
   py_res = tree_unflatten(res_tree, res)
   py_cts_out = tree_unflatten(out_tree, cts_out)
   py_cts_in = yield (py_res, py_cts_out), {}
+  # For each None in py_cts_in, indicating an argument for which the rule
+  # produces no cotangent, we replace it with a pytree with the structure of the
+  # corresponding subtree of in_tree and with leaves of a non-pytree sentinel
+  # object, to be replaced with Nones in the final returned result.
   zero = object()  # non-pytree sentinel to replace Nones in py_cts_in
-  cts_in, in_tree2 = tree_flatten(_replace_nones(zero, py_cts_in))
-  if in_tree != in_tree2:
+  py_cts_in_ = tuple(zero if ct is None else ct for ct in py_cts_in)
+  dummy = tree_unflatten(in_tree, [object()] * in_tree.num_leaves)
+  cts_in_flat = []
+  append_cts = lambda x, d: cts_in_flat.extend([x] * len(tree_flatten(d)[0]))
+  try:
+    tree_multimap(append_cts, py_cts_in_, dummy)
+  except ValueError:
+    _, in_tree2 = tree_flatten(py_cts_in)
     msg = ("Custom VJP rule must produce an output with the same container "
            "(pytree) structure as the args tuple of the primal function, "
            "and in particular must produce a tuple of length equal to the "
            "number of arguments to the primal function, but got VJP output "
            "structure {} for primal input structure {}.")
     raise TypeError(msg.format(in_tree2, in_tree)) from None
-  yield [None if ct is zero else ct for ct in cts_in]
+  yield [None if ct is zero else ct for ct in cts_in_flat]
 
 
 class CustomVJPCallPrimitive(core.CallPrimitive):
