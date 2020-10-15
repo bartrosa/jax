@@ -497,7 +497,8 @@ def _check_for_tracers(x):
            "arguments should typically not be indicated as nondiff_argnums. "
            "\n\n"
            "This behavior recently changed in JAX. "
-           "See https://github.com/google/jax/pull/TODO for more information.")
+           "See https://github.com/google/jax/blob/master/docs/custom_vjp_update.md "
+           "for more information.")
     raise core.UnexpectedTracerError(msg)
 
 @lu.transformation_with_aux
