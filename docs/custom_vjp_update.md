@@ -21,7 +21,7 @@ those as regular arguments. In the `bwd` rule, we need to produce values for the
 but we can just produce `None` values to indicate there's no corresponding
 gradient value.
 
-For example, here's the *old* way to write `clip_gradient`, which won't work
+For example, here's the **old** way to write `clip_gradient`, which won't work
 when `hi` and/or `lo` are `Tracer`s from some JAX transformation.
 
 ```python
@@ -41,7 +41,7 @@ def clip_gradient_bwd(lo, hi, _, g):
 clip_gradient.defvjp(clip_gradient_fwd, clip_gradient_bwd)
 ```
 
-Here's the *new*, awesome way, which supports arbitrary transformations:
+Here's the **new**, awesome way, which supports arbitrary transformations:
 
 ```python
 import jax
@@ -95,8 +95,8 @@ acted very much like lexical closure. But lexical closure over `Tracer`s wasn't
 at the time intended to work with `custom_jvp`/`custom_vjp`. Implementing
 `nondiff_argnums` that way was a mistake!
 
-*[PR #4008](https://github.com/google/jax/pull/4008) fixes all lexical closure
-issues with `custom_jvp` and `custom_vjp`.* Woohoo! That is, now `custom_jvp`
+**[PR #4008](https://github.com/google/jax/pull/4008) fixes all lexical closure
+issues with `custom_jvp` and `custom_vjp`.** Woohoo! That is, now `custom_jvp`
 and `custom_vjp` functions and rules can close over `Tracer`s to our hearts'
 content. For all non-autodiff transformations, things will Just Work. For
 autodiff transformations, we'll get a clear error message about why we can't
