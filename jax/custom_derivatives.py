@@ -24,7 +24,7 @@ from .tree_util import tree_flatten, tree_unflatten, tree_map, tree_multimap
 from .util import safe_zip, safe_map, split_list
 from .api_util import flatten_fun_nokwargs, argnums_partial, wrap_hashably
 from .abstract_arrays import raise_to_shaped
-from .ad_util import Zero, stop_gradient_p
+from .ad_util import Zero, zeros_like_aval, stop_gradient_p
 from .interpreters import partial_eval as pe
 from .interpreters import ad
 from .interpreters import batching
@@ -464,9 +464,10 @@ class custom_vjp:
       f_, dyn_args = lu.wrap_init(self.fun), args
       fwd, bwd = lu.wrap_init(self.fwd), lu.wrap_init(self.bwd)
     args_flat, in_tree = tree_flatten(dyn_args)
+    in_avals = [core.raise_to_shaped(core.get_aval(x)) for x in args_flat]
     flat_fun, out_tree = flatten_fun_nokwargs(f_, in_tree)
     flat_fwd, out_trees = _flatten_fwd(fwd, in_tree)
-    flat_bwd = _flatten_bwd(bwd, in_tree, out_trees)
+    flat_bwd = _flatten_bwd(bwd, in_tree, in_avals, out_trees)
     if config.omnistaging_enabled:
       out_flat = custom_vjp_call_p.bind(flat_fun, flat_fwd, flat_bwd, *args_flat,
                                         out_trees=out_trees)
@@ -515,7 +516,7 @@ def _flatten_fwd(in_tree, *args):
   yield res + out, (out_tree, res_tree)
 
 @lu.transformation
-def _flatten_bwd(in_tree, out_trees, *args):
+def _flatten_bwd(in_tree, in_avals, out_trees, *args):
   out_tree, res_tree = out_trees()
   res, cts_out = split_list(args, [res_tree.num_leaves])
   py_res = tree_unflatten(res_tree, res)
@@ -540,7 +541,8 @@ def _flatten_bwd(in_tree, out_trees, *args):
            "number of arguments to the primal function, but got VJP output "
            "structure {} for primal input structure {}.")
     raise TypeError(msg.format(in_tree2, in_tree)) from None
-  yield [None if ct is zero else ct for ct in cts_in_flat]
+  yield [zeros_like_aval(aval.at_least_vspace()) if ct is zero else ct
+         for aval, ct in zip(in_avals, cts_in_flat)]
 
 
 class CustomVJPCallPrimitive(core.CallPrimitive):

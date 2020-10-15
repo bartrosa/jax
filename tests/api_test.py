@@ -3959,6 +3959,20 @@ class CustomVJPTest(jtu.JaxTestCase):
     expected = 2 * jnp.cos(3.)
     self.assertAllClose(ans, expected, check_dtypes=False)
 
+  def test_bwd_nones_vmap(self):
+    @api.custom_vjp
+    def f(x, y):
+      return x * jnp.sin(y)
+    def f_fwd(x, y):
+      return f(x, y), jnp.cos(y)
+    def f_rev(cos, g):
+      return (None, 2 * cos * g)
+    f.defvjp(f_fwd, f_rev)
+
+    ans = api.grad(lambda x: api.vmap(f)(x, x).sum())(jnp.arange(3.))
+    expected = 2 * jnp.cos(jnp.arange(3.))
+    self.assertAllClose(ans, expected, check_dtypes=False)
+
   def test_bwd_nones_pytree(self):
     @api.custom_vjp
     def f(xs, y):
