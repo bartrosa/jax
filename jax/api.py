@@ -50,6 +50,7 @@ from .tree_util import (tree_map, tree_flatten, tree_unflatten, tree_structure,
 from .util import (unzip2, curry, partial, safe_map, safe_zip, prod, split_list,
                    extend_name_stack, wrap_name, cache)
 from .lib import jax_jit
+from .lib import version
 from .lib import xla_bridge as xb
 from .lib import xla_client as xc
 # Unused imports to be exported
@@ -86,10 +87,11 @@ zip = safe_zip
 FLAGS = flags.FLAGS
 flags.DEFINE_bool("jax_disable_jit", bool_env("JAX_DISABLE_JIT", False),
                   "Disable JIT compilation and just call original Python.")
-flags.DEFINE_bool("experimental_cpp_jit", bool_env("JAX_CPP_JIT", False),
-                  "A temporary flag enabling the C++ jax.jit fast path."
-                  "Set this to `False` only if it crashes otherwise and report "
-                  "the error to the jax-team.")
+flags.DEFINE_bool(
+    "experimental_cpp_jit", bool_env("JAX_CPP_JIT", version >= (0, 1, 57)),
+    "A temporary flag enabling the C++ jax.jit fast path."
+    "Set this to `False` only if it crashes otherwise and report "
+    "the error to the jax-team.")
 
 float0 = dtypes.float0
 
@@ -363,6 +365,7 @@ def _cpp_jit(
         return cache_miss(*args, **kwargs)[0]  # probably won't return
     else:
       return cpp_jitted_f(*args, **kwargs)
+  f_jitted._cpp_jitted_f = cpp_jitted_f
 
   return f_jitted
 
@@ -657,8 +660,8 @@ def _xla_computation(
     c = xb.make_computation_builder("xla_computation_{}".format(fun_name))
     xla_consts = map(partial(xb.constant, c), consts)
     should_tuple = tuple_args if tuple_args is not None else (len(avals) > 100)
-    xla_args = xla._xla_callable_args(
-        c, avals, should_tuple, partitions=in_parts_flat)
+    xla_args, donated_invars = xla._xla_callable_args(
+        c, avals, should_tuple, partitions=in_parts_flat, donated_invars=donated_invars)
     out_nodes = xla.jaxpr_subcomp(
         c, jaxpr, backend, axis_env_, xla_consts,
         extend_name_stack(wrap_name(fun_name, "xla_computation")), *xla_args)

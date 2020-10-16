@@ -463,6 +463,8 @@ def concatenate(operands: Sequence[Array], dimension: int) -> Array:
 Precision = xla_client.PrecisionConfig.Precision
 Precision.__str__ = lambda precision: precision.name
 PrecisionType = Any
+PrecisionLike = Union[None, PrecisionType, Tuple[PrecisionType, PrecisionType]]
+
 
 class ConvDimensionNumbers(NamedTuple):
   """Describes batch, spatial, and feature dimensions of a convolution.
@@ -489,7 +491,7 @@ def conv_general_dilated(
   rhs_dilation: Optional[Sequence[int]] = None,
   dimension_numbers: ConvGeneralDilatedDimensionNumbers  = None,
   feature_group_count: int = 1, batch_group_count: int = 1,
-  precision: Optional[PrecisionType] = None) -> Array:
+  precision: PrecisionLike = None) -> Array:
   """General n-dimensional convolution operator, with optional dilation.
 
   Wraps XLA's `Conv
@@ -516,8 +518,9 @@ def conv_general_dilated(
     feature_group_count: integer, default 1. See XLA HLO docs.
     batch_group_count: integer, default 1. See XLA HLO docs.
     precision: Optional. Either ``None``, which means the default precision for
-      the backend, or a ``lax.Precision`` enum value (``Precision.DEFAULT``,
-      ``Precision.HIGH`` or ``Precision.HIGHEST``).
+      the backend, a ``lax.Precision`` enum value (``Precision.DEFAULT``,
+      ``Precision.HIGH`` or ``Precision.HIGHEST``) or a tuple of two
+      ``lax.Precision`` enums indicating precision of ``lhs``` and ``rhs``.
 
   Returns:
     An array containing the convolution result.
@@ -573,7 +576,7 @@ def conv_general_dilated(
       lhs_shape=lhs.shape, rhs_shape=rhs.shape,
       precision=_canonicalize_precision(precision))
 
-def dot(lhs: Array, rhs: Array, precision: Optional[PrecisionType] = None) -> Array:
+def dot(lhs: Array, rhs: Array, precision: PrecisionLike = None) -> Array:
   """Vector/vector, matrix/vector, and matrix/matrix multiplication.
 
   Wraps XLA's `Dot
@@ -586,8 +589,9 @@ def dot(lhs: Array, rhs: Array, precision: Optional[PrecisionType] = None) -> Ar
     lhs: an array of rank 1 or 2.
     rhs: an array of rank 1 or 2.
     precision: Optional. Either ``None``, which means the default precision for
-      the backend, or a ``lax.Precision`` enum value (``Precision.DEFAULT``,
-      ``Precision.HIGH`` or ``Precision.HIGHEST``).
+      the backend, a ``lax.Precision`` enum value (``Precision.DEFAULT``,
+      ``Precision.HIGH`` or ``Precision.HIGHEST``) or a tuple of two
+      ``lax.Precision`` enums indicating precision of ``lhs``` and ``rhs``.
 
   Returns:
     An array containing the product.
@@ -604,7 +608,7 @@ DotDimensionNumbers = Tuple[Tuple[Sequence[int], Sequence[int]],
                             Tuple[Sequence[int], Sequence[int]]]
 
 def dot_general(lhs: Array, rhs: Array, dimension_numbers: DotDimensionNumbers,
-                precision: Optional[PrecisionType] = None) -> Array:
+                precision: PrecisionLike = None) -> Array:
   """More general contraction operator.
 
   Wraps XLA's `DotGeneral
@@ -618,8 +622,9 @@ def dot_general(lhs: Array, rhs: Array, dimension_numbers: DotDimensionNumbers,
       `((lhs_contracting_dims, rhs_contracting_dims),
       (lhs_batch_dims, rhs_batch_dims))`
     precision: Optional. Either ``None``, which means the default precision for
-      the backend, or a ``lax.Precision`` enum value (``Precision.DEFAULT``,
-      ``Precision.HIGH`` or ``Precision.HIGHEST``).
+      the backend, a ``lax.Precision`` enum value (``Precision.DEFAULT``,
+      ``Precision.HIGH`` or ``Precision.HIGHEST``) or a tuple of two
+      ``lax.Precision`` enums indicating precision of ``lhs``` and ``rhs``.
 
   Returns:
     An array containing the result.
@@ -691,9 +696,23 @@ def reshape(operand: Array, new_sizes: Shape,
 
 def pad(operand: Array, padding_value: Array,
         padding_config: Sequence[Tuple[int, int, int]]) -> Array:
-  """Wraps XLA's `Pad
+  """Applies low, high, and/or interior padding to an array.
+
+  Wraps XLA's `Pad
   <https://www.tensorflow.org/xla/operation_semantics#pad>`_
   operator.
+
+  Args:
+    operand: an array to be padded.
+    padding_value: the value to be inserted as padding. Must have the same dtype
+      as ``operand``.
+    padding_config: a sequence of ``(low, high, interior)`` tuples of integers,
+      giving the amount of low, high, and interior (dilation) padding to insert
+      in each dimension.
+
+  Returns:
+    The ``operand`` array with padding value ``padding_value`` inserted in each
+    dimension according to the ``padding_config``.
   """
   return pad_p.bind(operand, padding_value, padding_config=tuple(padding_config))
 
@@ -1490,7 +1509,7 @@ def stop_gradient(x):
 
 
 def conv(lhs: Array, rhs: Array, window_strides: Sequence[int],
-         padding: str, precision: Optional[PrecisionType] = None) -> Array:
+         padding: str, precision: PrecisionLike = None) -> Array:
   """Convenience wrapper around `conv_general_dilated`.
 
   Args:
@@ -1500,8 +1519,9 @@ def conv(lhs: Array, rhs: Array, window_strides: Sequence[int],
       strides.
     padding: either the string `'SAME'`, the string `'VALID'`.
     precision: Optional. Either ``None``, which means the default precision for
-      the backend, or a ``lax.Precision`` enum value (``Precision.DEFAULT``,
-      ``Precision.HIGH`` or ``Precision.HIGHEST``).
+      the backend, a ``lax.Precision`` enum value (``Precision.DEFAULT``,
+      ``Precision.HIGH`` or ``Precision.HIGHEST``) or a tuple of two
+      ``lax.Precision`` enums indicating precision of ``lhs``` and ``rhs``.
 
   Returns:
     An array containing the convolution result.
@@ -1514,7 +1534,7 @@ def conv_with_general_padding(lhs: Array, rhs: Array,
                               padding: Union[str, Sequence[Tuple[int, int]]],
                               lhs_dilation: Optional[Sequence[int]],
                               rhs_dilation: Optional[Sequence[int]],
-                              precision: Optional[PrecisionType] = None) -> Array:
+                              precision: PrecisionLike = None) -> Array:
   """Convenience wrapper around `conv_general_dilated`.
 
   Args:
@@ -1532,8 +1552,9 @@ def conv_with_general_padding(lhs: Array, rhs: Array,
       dilation factor to apply in each spatial dimension of `rhs`. RHS dilation
       is also known as atrous convolution.
     precision: Optional. Either ``None``, which means the default precision for
-      the backend, or a ``lax.Precision`` enum value (``Precision.DEFAULT``,
-      ``Precision.HIGH`` or ``Precision.HIGHEST``).
+      the backend, a ``lax.Precision`` enum value (``Precision.DEFAULT``,
+      ``Precision.HIGH`` or ``Precision.HIGHEST``) or a tuple of two
+      ``lax.Precision`` enums indicating precision of ``lhs``` and ``rhs``.
 
   Returns:
     An array containing the convolution result.
@@ -1581,7 +1602,7 @@ def conv_transpose(lhs: Array, rhs: Array, strides: Sequence[int],
                    rhs_dilation: Optional[Sequence[int]] = None,
                    dimension_numbers: ConvGeneralDilatedDimensionNumbers = None,
                    transpose_kernel: bool = False,
-                   precision: Optional[PrecisionType] = None) -> Array:
+                   precision: PrecisionLike = None) -> Array:
   """Convenience wrapper for calculating the N-d convolution "transpose".
 
   This function directly calculates a fractionally strided conv rather than
@@ -1605,8 +1626,9 @@ def conv_transpose(lhs: Array, rhs: Array, strides: Sequence[int],
       applied to the same kernel. For typical use in neural nets this is completely
       pointless and just makes input/output channel specification confusing.
     precision: Optional. Either ``None``, which means the default precision for
-      the backend, or a ``lax.Precision`` enum value (``Precision.DEFAULT``,
-      ``Precision.HIGH`` or ``Precision.HIGHEST``).
+      the backend, a ``lax.Precision`` enum value (``Precision.DEFAULT``,
+      ``Precision.HIGH`` or ``Precision.HIGHEST``) or a tuple of two
+      ``lax.Precision`` enums indicating precision of ``lhs``` and ``rhs``.
 
   Returns:
     Transposed N-d convolution, with output padding following the conventions of
@@ -1668,7 +1690,24 @@ def full_like(x: Array, fill_value: Array, dtype: Optional[DType] = None,
   return full(fill_shape, fill_value, dtype or _dtype(x))
 
 
-def collapse(operand: Array, start_dimension: int, stop_dimension: int) -> Array:
+def collapse(operand: Array, start_dimension: int,
+             stop_dimension: int) -> Array:
+  """Collapses dimensions of an array into a single dimension.
+
+  For example, if ``operand`` is an array with shape ``[2, 3, 4]``,
+  ``collapse(operand, 0, 2).shape == [6, 4]``. The elements of the collapsed
+  dimension are laid out major-to-minor, i.e., with the lowest-numbered
+  dimension as the slowest varying dimension.
+
+  Args:
+    operand: an input array.
+    start_dimension: the start of the dimensions to collapse (inclusive).
+    stop_dimension: the end of the dimensions to collapse (exclusive).
+
+  Returns:
+    An array where dimensions ``[start_dimension, stop_dimension)`` have been
+    collapsed (raveled) into a single dimension.
+  """
   lo, hi = start_dimension, stop_dimension
   size = prod(operand.shape[lo:hi])
   new_shape = operand.shape[:lo] + (size,) + operand.shape[hi:]
@@ -1742,6 +1781,9 @@ def dynamic_index_in_dim(operand: Array, index: Array, axis: int = 0,
 
 def dynamic_update_slice_in_dim(operand: Array, update: Array,
                                 start_index: Array, axis: int) -> Array:
+  """Convenience wrapper around :func:`dynamic_update_slice` to update a slice
+     in a single ``axis``.
+  """
   axis = int(axis)
   start_indices = [_zero(start_index)] * _ndim(operand)
   start_indices[axis] = start_index
@@ -1750,6 +1792,9 @@ def dynamic_update_slice_in_dim(operand: Array, update: Array,
 
 def dynamic_update_index_in_dim(operand: Array, update: Array, index: Array,
                                 axis: int) -> Array:
+  """Convenience wrapper around :func:`dynamic_update_slice` to update a slice
+     of size 1 in a single ``axis``.
+  """
   axis = int(axis)
   if _ndim(update) != _ndim(operand):
     assert _ndim(update) + 1 == _ndim(operand)
@@ -1758,7 +1803,7 @@ def dynamic_update_index_in_dim(operand: Array, update: Array, index: Array,
 
 
 def batch_matmul(lhs: Array, rhs: Array,
-                 precision: Optional[PrecisionType] = None) -> Array:
+                 precision: PrecisionLike = None) -> Array:
   """Batch matrix multiplication."""
   if _min(lhs.ndim, rhs.ndim) < 2:
     raise ValueError('Arguments to batch_matmul must be at least 2D, got {}, {}'
@@ -2831,7 +2876,10 @@ def _reshape_axis_out_of(src, size1, x):
 def _precision_config(precision):
   if precision is not None:
     config = xla_client.PrecisionConfig()
-    config.operand_precision.extend((precision, precision))
+    if isinstance(precision, tuple):
+      config.operand_precision.extend(precision)
+    else:
+      config.operand_precision.extend((precision, precision))
     return config
   return None
 
@@ -3635,13 +3683,17 @@ def _slice_transpose_rule(t, operand, *, start_indices, limit_indices, strides):
     pads = zip(start_indices, np.subtract(operand_shape, limit_indices),
                (0,) * len(start_indices))
   else:
-    real_limits = np.add(np.add(start_indices, 1),
-                          np.multiply(np.subtract(t.shape, 1), strides))
+    real_limits = np.add(
+      start_indices,
+      np.where(np.array(t.shape) == 0, 0,
+               np.add(1, np.multiply(np.subtract(t.shape, 1), strides))))
     pads = safe_zip(start_indices, np.subtract(operand_shape, real_limits),
                     np.subtract(strides, 1))
   result = pad(t, _const(t, 0), pads)
-  assert result.shape == operand_shape
+  assert result.shape == operand_shape, (
+    f"result.shape={result.shape} operand_shape={operand_shape}")
   return [result]
+
 
 def _slice_batching_rule(batched_args, batch_dims, *, start_indices,
                          limit_indices, strides):
@@ -4521,53 +4573,29 @@ def _scatter_jvp(primals, tangents, *, update_jaxpr, update_consts,
 
   # If there are overlapping indices in the scatter, it is unspecified which
   # update "wins". So we use the following perhaps surprising scheme:
-  # a) attach a positive ID to each update in updates, forming (value, id) pairs
-  #    (using a new array dimension because scatter doesn't actually support
-  #     pairs).
-  # b) perform the scatter, yielding (value, id) updates, which we split apart.
-  # c) perform the inverse gather on the ids (similar to
-  #    _scatter_add_transpose), and use it to build a mask for the tangent of
-  #    `updates`.
-  # d) perform a scatter-add on the masked JVP values. A benefit of using
-  #    scatter-add here is that we don't need a `scatter` transpose rule.
+  # a) attach a positive ID to each update in updates, and perform the scatter
+  #    on the IDs
+  # b) perform the inverse gather on the scattered IDs (similar to
+  #    _scatter_add_transpose).
+  # c) use the gathered IDs to mask the primal and tangent values.
+  # d) perform a scatter-add on the masked primal and tangent values. A benefit
+  #    of using scatter-add here is that we don't need a `scatter` transpose
+  #    rule.
 
-  # a) add unique positive IDs (iotas) to the updates, and zeros to the operand.
-  operand_shape = operand.shape
-  updates_shape = updates.shape
-  updates_dtype = _dtype(updates)
 
-  new_operand = reshape(operand, (1,) + operand_shape)
-  new_operand = pad(new_operand, _zero(operand),
-                    ((0, 1, 0),) + tuple((0, 0, 0) for _ in operand_shape))
-
-  # We specify the dtype here in case `updates_shape` is an empty tuple, in
-  # which case numpy defaults to float64.
-  ids_shape = np.array(updates_shape, dtype=np.int32)
+  # a) attach a positive ID to each update in `updates`, and perform a scatter
+  #    on the IDs.
+  ids_shape = np.array(updates.shape, dtype=np.int64)
   ids_shape[dnums.update_window_dims,] = 1
   num_ids = np.prod(ids_shape)
-  update_ids = add(reshape(iota(updates_dtype, num_ids), ids_shape),
-                   _ones(updates))
+  id_dtype = np.uint32 if (num_ids + 1) < np.iinfo(np.uint32).max else np.uint64
+  update_ids = add(reshape(iota(id_dtype, num_ids), ids_shape),
+                   _ones(updates, dtype=id_dtype))
 
-  # TODO(phawkins): there is a potential bug here if the number of updates
-  # is large enough to overflow the number of mantissa bits in a float so IDs
-  # end up colliding. We could also utilize the exponent and sign bits, with a
-  # little more work.
-  assert num_ids < (2 ** dtypes.finfo(updates_dtype).nmant)
-
-  updates = reshape(updates, (1,) + updates_shape)
-  reshaped_update_ids = reshape(update_ids, (1,) + updates_shape)
-  updates_and_ids = concatenate((updates, reshaped_update_ids), 0)
-
-  new_dnums = ScatterDimensionNumbers(
-    update_window_dims=(0,) + tuple(d + 1 for d in dnums.update_window_dims),
-    inserted_window_dims=tuple(d + 1 for d in dnums.inserted_window_dims),
-    scatter_dims_to_operand_dims=tuple(d + 1 for d in dnums.scatter_dims_to_operand_dims))
-  outputs = scatter_p.bind(
-      new_operand, scatter_indices, updates_and_ids, update_jaxpr=update_jaxpr,
-      update_consts=update_consts, dimension_numbers=new_dnums,
-      indices_are_sorted=indices_are_sorted, unique_indices=unique_indices)
-  val_out = index_in_dim(outputs, 0, keepdims=False)
-  scattered_ids = index_in_dim(outputs, 1, keepdims=False)
+  scattered_ids = scatter(full(operand.shape, 0, id_dtype),
+                          scatter_indices, update_ids, dnums,
+                          indices_are_sorted=indices_are_sorted,
+                          unique_indices=unique_indices)
 
   # b) compute the inverse gather that "undoes" the scatter on the id values.
   gather_dnums = GatherDimensionNumbers(
@@ -4580,19 +4608,27 @@ def _scatter_jvp(primals, tangents, *, update_jaxpr, update_consts,
     if i in dnums.inserted_window_dims:
       slice_sizes.append(1)
     else:
-      slice_sizes.append(updates_shape[dnums.update_window_dims[pos]])
+      slice_sizes.append(updates.shape[dnums.update_window_dims[pos]])
       pos += 1
   gathered_update_ids = gather(scattered_ids, scatter_indices,
-                         dimension_numbers=gather_dnums,
-                         slice_sizes=slice_sizes)
+                               dimension_numbers=gather_dnums,
+                               slice_sizes=slice_sizes)
 
-  # c) mask off input JVP elements that do not correspond to a primal output.
+  # c) mask off input elements that do not correspond to a primal output.
+  masked_operand = select(eq(scattered_ids, _zeros(scattered_ids)),
+                          operand, _zeros(operand))
+  masked_updates = select(eq(update_ids,  gathered_update_ids),
+                          updates, _zeros(updates))
   masked_g_operand = select(eq(scattered_ids, _zeros(scattered_ids)),
                             g_operand, _zeros(g_operand))
   masked_g_updates = select(eq(update_ids, gathered_update_ids),
                             g_updates, _zeros(g_updates))
 
-  # d) perform a scatter-add to compute the tangent output.
+  # d) perform scatter-adds to compute the primal and tangent outputs.
+  val_out = scatter_add(masked_operand, scatter_indices, masked_updates,
+                        dimension_numbers=dnums,
+                        indices_are_sorted=indices_are_sorted,
+                        unique_indices=unique_indices)
   tangent_out = scatter_add(masked_g_operand, scatter_indices, masked_g_updates,
                             dimension_numbers=dnums,
                             indices_are_sorted=indices_are_sorted,
@@ -4882,6 +4918,10 @@ def _reduce_window_shape_rule(operand, init_value, *, jaxpr, consts,
     msg = ("reduce_window got inconsistent dtypes for operand and init_value: "
            " got operand dtype {} and init_value dtype {}.")
     raise TypeError(msg.format(operand.dtype, init_value.dtype))
+  if init_value.shape != ():
+    msg = ("reduce_window expected init_value to be a scalar but init_value "
+           "has shape {}.")
+    raise TypeError(msg.format(init_value.shape))
   return _common_reduce_window_shape_rule(
     operand, window_dimensions, window_strides, padding, base_dilation,
     window_dilation)
@@ -6034,11 +6074,15 @@ def remaining(original, *removed_lists):
 def _canonicalize_precision(precision):
   if precision is None:
     return None
-  if isinstance(precision, Precision):
+  if isinstance(precision, Precision) or (
+      isinstance(precision, tuple)
+      and len(precision) == 2
+      and all(isinstance(p, Precision) for p in precision)
+  ):
     return precision
   else:
-    msg = "Precision argument must be None or a lax.Precision value; got {}"
-    raise ValueError(msg.format(precision))
+    raise ValueError("Precision argument must be None, a lax.Precision value "
+                     f"or a tuple of two lax.Precision values; got {precision}")
 
 
 def conv_dimension_numbers(lhs_shape, rhs_shape, dimension_numbers):
